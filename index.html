@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Демо — Личный кабинет (Пассажир / Админ / Водитель)</title>
+  <!-- Tailwind Play CDN (for quick prototyping, production would use build) -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* Small custom styles for nicer visuals */
+    body { background: linear-gradient(180deg,#f7f8fb 0%, #ffffff 60%); }
+    .glass { background: rgba(255,255,255,0.7); backdrop-filter: blur(6px); }
+    .soft-border { box-shadow: 0 6px 18px rgba(16,24,40,0.06); border: 1px solid rgba(16,24,40,0.04); }
+    .pill { border-radius:999px; padding:6px 10px; font-weight:600; }
+    .status-dot { width:10px; height:10px; border-radius:999px; display:inline-block; margin-right:8px; }
+    .chat-bubble { max-width:70%; }
+  </style>
+</head>
+<body class="antialiased text-slate-900">
+  <div id="root" class="min-h-screen p-6"></div>
+
+  <!-- React + ReactDOM from CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script>
+  const e = React.createElement;
+  const { useState } = React;
+
+  // --- Mock data ---
+  const mockOrders = [
+    { id: 'ORD-1001', route: 'Москва — Санкт-Петербург', date: '2025-09-02', interval: '08:00–12:00', price: '2 900 ₽', status: 'Оплачено', seats: ['1A','1B'] },
+    { id: 'ORD-1002', route: 'СПб — Петрозаводск', date: '2025-09-10', interval: '14:00–18:00', price: '1 200 ₽', status: 'Ожидает оплаты', seats: ['2C'] },
+    { id: 'ORD-1003', route: 'Пермь — Екатеринбург', date: '2025-08-25', interval: '09:00–13:00', price: '1 800 ₽', status: 'В пути', seats: ['3B'] },
+  ];
+
+  const drivers = [
+    { id: 'D-01', name: 'Иван Петров', status: 'Допущен', car: 'Ford Transit, A123BC', trips: 412 },
+    { id: 'D-02', name: 'Мария Иванова', status: 'Проверка', car: 'Volkswagen Crafter, B456CD', trips: 120 },
+  ];
+
+  // --- Components ---
+  function Icon({ name, className='' }){
+    const icons = {
+      menu: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5M3.75 17.25h16.5"/></svg>',
+      search: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-4.35-4.35m0 0A7.5 7.5 0 1116.65 16.65z"/></svg>',
+      chevron: '<svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5"/></svg>'
+    };
+    return e('span', { className: `inline-block align-middle ${className}`, dangerouslySetInnerHTML: { __html: icons[name] || '' }});
+  }
+
+  function TopBar({ role, setRole }){
+    return e('header', { className: 'flex items-center justify-between mb-6' },
+      e('div', { className: 'flex items-center gap-4' },
+        e('div', { className: 'text-2xl font-extrabold bg-gradient-to-r from-indigo-600 to-sky-500 bg-clip-text text-transparent' }, 'TransitPro'),
+        e('div', { className: 'hidden sm:flex items-center gap-2 text-sm text-slate-500' },
+          e('div','Демо личного кабинета — дизайн 2025')
+        )
+      ),
+      e('div', { className: 'flex items-center gap-4' },
+        e('div', { className: 'hidden sm:flex items-center gap-2 bg-white soft-border p-1 rounded-full' },
+          e('button', { className: `px-3 py-1 rounded-full ${role==='passenger'?'bg-sky-600 text-white':'text-slate-600'}`, onClick: ()=>setRole('passenger') }, 'Пассажир'),
+          e('button', { className: `px-3 py-1 rounded-full ${role==='admin'?'bg-sky-600 text-white':'text-slate-600'}`, onClick: ()=>setRole('admin') }, 'Админ'),
+          e('button', { className: `px-3 py-1 rounded-full ${role==='driver'?'bg-sky-600 text-white':'text-slate-600'}`, onClick: ()=>setRole('driver') }, 'Водитель')
+        ),
+        e('div', { className: 'flex items-center gap-3' },
+          e('div', { className: 'p-2 rounded-lg glass soft-border flex items-center gap-3' },
+            e('img', { src:'https://avatars.dicebear.com/api/identicon/demo.svg', alt:'avatar', className:'w-10 h-10 rounded-full' }),
+            e('div', null, e('div', { className: 'text-sm font-semibold' }, 'Алексей'), e('div', { className: 'text-xs text-slate-500' }, 'Профиль'))
+          )
+        )
+      )
+    );
+  }
+
+  // === Passenger Pages ===
+  function PassengerDashboard({ onOpen }){
+    const [filter, setFilter] = useState('all');
+    const filtered = mockOrders.filter(o => filter==='all' ? true : (filter==='active' ? ['Оплачено','Ожидает оплаты','В пути'].includes(o.status) : o.status === 'Завершен'));
+
+    return e('div', null,
+      e('div', { className: 'mb-4 flex items-center justify-between' },
+        e('h2', { className: 'text-xl font-bold' }, 'Мои заказы'),
+        e('div', { className: 'flex items-center gap-3' },
+          e('select', { value:filter, onChange: (e)=>setFilter(e.target.value), className: 'px-3 py-2 rounded-lg soft-border bg-white' },
+            e('option', { value:'all'}, 'Все'),
+            e('option', { value:'active'}, 'Активные'),
+            e('option', { value:'finished'}, 'Завершенные')
+          ),
+          e('input', { placeholder:'Поиск по маршруту / ID', className:'px-3 py-2 rounded-lg soft-border bg-white' })
+        )
+      ),
+      e('div', { className: 'grid gap-4' },
+        filtered.map(o => e('div', { key:o.id, className: 'p-4 rounded-2xl bg-white soft-border flex items-center justify-between' },
+          e('div', { className: 'flex items-center gap-4' },
+            e('div', { className: 'w-3/12' },
+              e('div', { className: 'text-xs text-slate-400' }, o.date),
+              e('div', { className: 'font-semibold' }, o.route),
+              e('div', { className: 'text-sm text-slate-500' }, o.interval)
+            ),
+            e('div', { className: 'flex items-center gap-3' },
+              e('div', { className: 'text-sm text-slate-500' }, `Места: ${o.seats.join(', ')}`),
+              e('div', { className: 'px-3 py-1 rounded-lg bg-slate-50 text-sm' }, o.price)
+            )
+          ),
+          e('div', { className: 'flex items-center gap-3' },
+            e('div', { className: 'text-sm flex items-center' },
+              e('span', { className:'status-dot', style: { background: o.status==='Оплачено'? 'linear-gradient(90deg,#10b981,#06b6d4)' : o.status==='Ожидает оплаты' ? '#f59e0b' : '#06b6d4' } }),
+              e('span', null, o.status)
+            ),
+            e('button', { className: 'px-4 py-2 bg-sky-600 text-white rounded-lg', onClick: ()=>onOpen(o) }, 'Подробнее')
+          )
+        ))
+      )
+    );
+  }
+
+  function OrderDetails({ order, onClose }){
+    if(!order) return e('div', { className: 'p-6 rounded-xl bg-white soft-border' }, 'Выберите заказ');
+    return e('div', { className: 'space-y-4' },
+      e('div', { className: 'flex items-start justify-between' },
+        e('div', null, e('h3', { className: 'text-lg font-bold' }, `Заказ ${order.id}`), e('div', { className: 'text-sm text-slate-500' }, order.route)),
+        e('div', null, e('div', { className: 'text-sm text-slate-500' }, order.date), e('div', { className: 'px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 inline-block' }, order.status))
+      ),
+      e('div', { className: 'p-4 rounded-lg glass soft-border' },
+        e('div', { className: 'grid grid-cols-2 gap-4' },
+          e('div', null, e('div', { className: 'text-xs text-slate-400' }, 'Интервал'), e('div', { className: 'font-medium' }, order.interval)),
+          e('div', null, e('div', { className: 'text-xs text-slate-400' }, 'Места'), e('div', { className: 'font-medium' }, order.seats.join(', ')))
+        )
+      ),
+      e('div', { className: 'flex items-center gap-3' },
+        e('button', { className: 'px-4 py-2 bg-white soft-border rounded-lg' }, 'Загрузить чек'),
+        e('button', { className: 'px-4 py-2 bg-rose-500 text-white rounded-lg' }, 'Отменить заказ')
+      ),
+      e('div', { className: 'p-4 rounded-lg bg-white soft-border' },
+        e('h4', { className: 'font-semibold mb-2' }, 'История статусов'),
+        e('ol', { className: 'list-decimal pl-5 text-sm text-slate-600' },
+          e('li', null, 'Создан — 2025-08-01 10:12'),
+          e('li', null, 'Оплачен — 2025-08-02 11:30'),
+          e('li', null, 'Назначен водитель — 2025-08-20 09:00')
+        )
+      ),
+      e('div', { className: 'p-4 rounded-lg bg-white soft-border' },
+        e('h4', { className: 'font-semibold mb-2' }, 'Чат с оператором'),
+        e('div', { className: 'h-40 overflow-y-auto p-3 space-y-3 bg-slate-50 rounded-lg' },
+          e('div', { className: 'self-start chat-bubble p-3 bg-white rounded-lg soft-border' }, e('div', { className: 'text-sm' }, 'Здравствуйте, подскажите по местам.')),
+          e('div', { className: 'self-end chat-bubble p-3 bg-sky-600 text-white rounded-lg' }, e('div', { className: 'text-sm' }, 'Добрый день, ваши места подтверждены.'))
+        ),
+        e('div', { className: 'mt-3 flex items-center gap-3' },
+          e('input', { className: 'flex-1 px-3 py-2 rounded-lg soft-border', placeholder: 'Напишите сообщение...' }),
+          e('button', { className: 'px-4 py-2 bg-sky-600 text-white rounded-lg' }, 'Отправить')
+        )
+      )
+    );
+  }
+
+  function Profile(){
+    return e('div', { className: 'space-y-4' },
+      e('h3', { className: 'text-lg font-bold' }, 'Профиль'),
+      e('div', { className: 'grid grid-cols-2 gap-4' },
+        e('div', { className: 'p-4 rounded-lg bg-white soft-border' },
+          e('label', { className: 'text-xs text-slate-400' }, 'ФИО'),
+          e('div', { className: 'font-medium' }, 'Алексей Смирнов'),
+          e('div', { className: 'text-xs text-slate-400 mt-2' }, 'Гражданство'),
+          e('div', null, 'Россия')
+        ),
+        e('div', { className: 'p-4 rounded-lg bg-white soft-border' },
+          e('label', { className: 'text-xs text-slate-400' }, 'Контакты'),
+          e('div', null, 'alex@example.com'),
+          e('div', null, '+7 900 000 00 00')
+        )
+      ),
+      e('div', { className: 'p-4 rounded-lg bg-white soft-border' },
+        e('div', { className: 'text-xs text-slate-400' }, 'Привязки'),
+        e('div', { className: 'flex items-center gap-3 mt-2' },
+          e('button', { className: 'px-3 py-2 rounded-lg soft-border' }, 'Google — Привязан'),
+          e('button', { className: 'px-3 py-2 rounded-lg soft-border' }, 'Telegram — Не привязан')
+        )
+      ),
+      e('div', { className: 'p-4 rounded-lg bg-white soft-border' },
+        e('h4', { className: 'font-semibold mb-2' }, 'Уведомления'),
+        e('label', { className: 'flex items-center gap-3' }, e('input', { type:'checkbox', defaultChecked:true }), 'Email'),
+        e('label', { className: 'flex items-center gap-3' }, e('input', { type:'checkbox' }), 'Telegram'),
+        e('label', { className: 'flex items-center gap-3' }, e('input', { type:'checkbox', defaultChecked:true }), 'SMS')
+      )
+    );
+  }
+
+  // === Admin Pages ===
+  function AdminDashboard(){
+    return e('div', null,
+      e('h2', { className: 'text-xl font-bold mb-4' }, 'Дашборд администратора'),
+      e('div', { className: 'grid grid-cols-1 md:grid-cols-3 gap-4 mb-4' },
+        e('div', { className: 'p-4 rounded-2xl bg-white soft-border' }, e('div', { className: 'text-sm text-slate-400' }, 'Новые оплаты на проверке'), e('div', { className: 'text-3xl font-extrabold' }, '12')),
+        e('div', { className: 'p-4 rounded-2xl bg-white soft-border' }, e('div', { className: 'text-sm text-slate-400' }, 'Заявки вне маршрутов'), e('div', { className: 'text-3xl font-extrabold' }, '3')),
+        e('div', { className: 'p-4 rounded-2xl bg-white soft-border' }, e('div', { className: 'text-sm text-slate-400' }, 'Предстоящие рейсы (7 дней)'), e('div', { className: 'text-3xl font-extrabold' }, '24'))
+      ),
+      e('div', { className: 'p-4 rounded-2xl bg-white soft-border' },
+        e('h3', { className: 'font-semibold mb-2' }, 'Управление заказами'),
+        e('table', { className: 'min-w-full text-sm' },
+          e('thead', null, e('tr', null, ['ID','Пассажир','Маршрут','Дата','Статус','Действия'].map(h=>e('th',{key:h,className:'text-left py-2 text-slate-500'},h)))),
+          e('tbody', null,
+            mockOrders.map(row => e('tr', { key: row.id, className: 'border-t' },
+              e('td', { className: 'py-3' }, row.id),
+              e('td', { className: 'py-3' }, '—'),
+              e('td', { className: 'py-3' }, row.route),
+              e('td', { className: 'py-3' }, row.date),
+              e('td', { className: 'py-3' }, row.status),
+              e('td', { className: 'py-3' }, e('div', { className: 'flex gap-2' }, e('button', { className: 'px-3 py-1 rounded-lg bg-emerald-600 text-white' }, 'Подтвердить'), e('button', { className: 'px-3 py-1 rounded-lg soft-border' }, 'Назначить')))
+            ))
+          )
+        )
+      )
+    );
+  }
+
+  function Drivers(){
+    return e('div', null,
+      e('h2', { className: 'text-xl font-bold mb-4' }, 'Водители'),
+      e('div', { className: 'grid gap-4' },
+        drivers.map(d => e('div', { key:d.id, className: 'p-4 rounded-2xl bg-white soft-border flex items-center justify-between' },
+          e('div', { className: 'flex items-center gap-4' },
+            e('img', { src:'https://avatars.dicebear.com/api/personas/'+d.id+'.svg', className:'w-14 h-14 rounded-full' }),
+            e('div', null, e('div', { className: 'font-semibold' }, d.name), e('div', { className: 'text-sm text-slate-500' }, d.car))
+          ),
+          e('div', null, e('div', { className: 'text-sm text-slate-400 mb-2' }, `Поездок: ${d.trips}`), e('div', { className: 'flex gap-2' }, e('button', { className: 'px-3 py-1 rounded-lg soft-border' }, 'Документы'), e('button', { className: 'px-3 py-1 rounded-lg bg-rose-500 text-white' }, 'Блокировать')))
+        ))
+      )
+    );
+  }
+
+  // === Driver Pages ===
+  function DriverAssignments(){
+    return e('div', null,
+      e('h2', { className: 'text-xl font-bold mb-4' }, 'Назначения'),
+      e('div', { className: 'grid gap-4' },
+        mockOrders.map(o => e('div', { key:o.id, className: 'p-4 rounded-2xl bg-white soft-border flex items-center justify-between' },
+          e('div', null, e('div', { className: 'font-semibold' }, o.route), e('div', { className: 'text-sm text-slate-500' }, `${o.date} • ${o.interval}`)),
+          e('div', null, e('div', { className: 'text-sm text-slate-500' }, `Пассажиров: ${o.seats.length}`), e('button', { className: 'mt-2 px-3 py-1 rounded-lg bg-sky-600 text-white' }, 'Маршрутный лист'))
+        ))
+      )
+    );
+  }
+
+  function DriverSheet(){
+    return e('div', null,
+      e('h2', { className: 'text-xl font-bold mb-4' }, 'Маршрутный лист'),
+      e('div', { className: 'p-4 rounded-2xl bg-white soft-border' },
+        e('ol', null,
+          e('li', { className: 'py-2' }, 'Точка 1 — Иванов Иван — +7 900 000 00 01'),
+          e('li', { className: 'py-2' }, 'Точка 2 — Петров Петр — +7 900 000 00 02')
+        ),
+        e('div', { className: 'mt-3 text-sm text-slate-500' }, 'Карта: (здесь будет мини-карта)')
+      )
+    );
+  }
+
+  // === Main App ===
+  function App(){
+    const [role, setRole] = useState('passenger');
+    const [selectedOrder, setSelectedOrder] = useState(mockOrders[0]);
+    const [nav, setNav] = useState('dashboard');
+
+    // left menu items by role
+    const menus = {
+      passenger: [ {id:'dashboard', label:'Дашборд'}, {id:'profile', label:'Профиль'}, {id:'notifications', label:'Уведомления'} ],
+      admin: [ {id:'dashboard', label:'Дашборд'}, {id:'orders', label:'Управление заказами'}, {id:'drivers', label:'Водители'}, {id:'routes', label:'Маршруты'} ],
+      driver: [ {id:'assignments', label:'Назначения'}, {id:'sheet', label:'Маршрутный лист'}, {id:'history', label:'История'} ]
+    };
+
+    return e('div', { className: 'max-w-7xl mx-auto' },
+      e(TopBar, { role, setRole }),
+      e('div', { className: 'grid grid-cols-1 lg:grid-cols-4 gap-6' },
+        // left nav
+        e('aside', { className: 'col-span-1' },
+          e('div', { className: 'p-4 rounded-2xl bg-white soft-border sticky top-6' },
+            e('div', { className: 'text-sm text-slate-500 mb-4' }, `Роль: ${role==='passenger'?'Пассажир':role==='admin'?'Админ':'Водитель'}`),
+            menus[role].map(m => e('button', { key:m.id, onClick: ()=>setNav(m.id), className: `w-full text-left px-3 py-2 rounded-lg ${nav===m.id? 'bg-sky-600 text-white':'soft-border bg-white'}` }, m.label))
+          )
+        ),
+        // main
+        e('main', { className: 'col-span-1 lg:col-span-3 space-y-6' },
+          role==='passenger' && nav==='dashboard' && e(PassengerDashboard, { onOpen: setSelectedOrder }),
+          role==='passenger' && nav==='profile' && e(Profile),
+          role==='passenger' && nav==='notifications' && e('div', { className: 'p-4 rounded-2xl bg-white soft-border' }, e('h2', { className: 'text-lg font-bold mb-2' }, 'Уведомления'), e('div', { className: 'text-sm text-slate-500' }, 'Список системных уведомлений...')),
+
+          role==='passenger' && e('div', { className: 'p-4 rounded-2xl bg-white soft-border' }, e(OrderDetails, { order: selectedOrder })),
+
+          role==='admin' && nav==='dashboard' && e(AdminDashboard),
+          role==='admin' && nav==='orders' && e('div', { className: 'p-4 rounded-2xl bg-white soft-border' }, e('h2', { className: 'text-lg font-bold' }, 'Управление заказами — Тестовый экран')),
+          role==='admin' && nav==='drivers' && e(Drivers),
+
+          role==='driver' && nav==='assignments' && e(DriverAssignments),
+          role==='driver' && nav==='sheet' && e(DriverSheet),
+          role==='driver' && nav==='history' && e('div', { className: 'p-4 rounded-2xl bg-white soft-border' }, e('h2', { className: 'text-lg font-bold' }, 'История рейсов'))
+        )
+      )
+    );
+  }
+
+  ReactDOM.createRoot(document.getElementById('root')).render(e(App));
+  </script>
+</body>
+</html>
